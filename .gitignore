@@ -1,0 +1,25 @@
+# 构建产物
+build/
+*.o
+*.obj
+*.a
+
+# 产出 DLL
+il2cpp_mod.dll
+il2cpp_tool.dll
+
+# 日志
+*.log
+
+# 本地配置（模板放的是 mod.ini.example）
+config/mod.ini
+
+# 编辑器 / 系统
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+Thumbs.db
+desktop.ini
+.DS_Store

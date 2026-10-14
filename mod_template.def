@@ -1,0 +1,42 @@
+; mod_template.def — 精确导出表
+;
+; 为什么需要它：链接时为了减小体积用了 `-Wl,--exclude-all-symbols`，那会把**所有**符号
+; 标为 hidden，包括我们特意用 extern "C" 标了可见性的 Mod* 系列。手动映射虽然不靠
+; 导入表找 DllMain（直接调入口点），但注入器的 --replace 要**远程调用 ModUnload**，
+; 就必须能在导出表里找到它。
+;
+; 导出三类：
+;   1) Mod*          —— 热重载接口，供注入器远程调用 / 核对 ABI
+;   2) Esp*          —— 历史命名别名（老注入器按这个前缀找），内部转发到 Mod*
+;   3) UiShutdownCompleted / DllMainCRTStartup —— 清理状态查询与入口点
+;
+; 镜像基址由注入器侧扫内存找 ModUnload / EspUnload 导出名反推（共享内存方案因目标
+; 进程里 CreateFileMapping 返回 err=1455 而弃用）。
+;
+; 想彻底去掉 Esp* 兼容别名：删掉下面的 Esp 行，并删掉 src/hot_reload.cpp 末尾的
+; 转发区块。
+
+EXPORTS
+    ; ---- 主接口 ----
+    ModUnload
+    ModIsLoaded
+    ModVersion
+    ModClaimInstance
+    ModSetSelf
+    ModSelfBase
+    ModLockName
+    ModAbiVersion
+
+    ; ---- 历史命名别名（转发到上面的 Mod*）----
+    EspUnload
+    EspIsLoaded
+    EspVersion
+    EspClaimInstance
+    EspSetSelf
+    EspSelfBase
+    EspLockName
+    EspAbiVersion
+
+    ; ---- 清理状态 / 入口点 ----
+    UiShutdownCompleted
+    DllMainCRTStartup

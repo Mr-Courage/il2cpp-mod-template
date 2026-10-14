@@ -1,0 +1,15 @@
+# 仓库内统一用 LF 存储。
+# 理由：本项目的 Makefile / 构建脚本要给 msys、WSL、Linux CI 用，
+# 一旦被 Windows 上的 core.autocrlf=true 转成 CRLF，make 会因为
+# 行尾的 \r 报 "missing separator"。源码同理（虽然 C++ 不怕 \r，
+# 但保持一致更省心）。
+* text=auto eol=lf
+
+# 明确的二进制文件（别做行尾转换）
+*.dll   binary
+*.exe   binary
+*.lib   binary
+*.png   binary
+*.ico   binary
+*.ttf   binary
+*.ttc   binary
