@@ -88,6 +88,17 @@ static int BuildInto(Vec<ArkClassEntry> &dst)
             const char *name = api.il2cpp_class_get_name(k);
             if (!name || !name[0]) { ++errCount; continue; }
             const char *ns = api.il2cpp_class_get_namespace(k);
+            // 嵌套类的 namespace 常为空，沿 declaring_type 向上补齐外层命名空间
+            if ((!ns || !ns[0]) && api.il2cpp_class_get_declaring_type)
+            {
+                Il2CppClass *decl = api.il2cpp_class_get_declaring_type(k);
+                for (int d = 0; decl && d < 6; ++d)
+                {
+                    const char *dns = api.il2cpp_class_get_namespace(decl);
+                    if (dns && dns[0]) { ns = dns; break; }
+                    decl = api.il2cpp_class_get_declaring_type(decl);
+                }
+            }
 
             ArkClassEntry *e = dst.Push();
             if (!e) break;
@@ -186,20 +197,29 @@ const ArkClassEntry *ArkReflectFindClass(const char *fullOrShort)
     const char *dot = strrchr(fullOrShort, '.');
     const char *shortName = dot ? dot + 1 : fullOrShort;
 
+    const ArkClassEntry *fallback = nullptr;
     for (int i = 0; i < g_index.count; ++i)
     {
         const ArkClassEntry *e = &g_index.data[i];
         if (strcmp(e->name, shortName) != 0) continue;
         if (!dot) return e;                       // 只给了短名，第一个匹配就算
-        if (strcmp(e->ns, "") != 0)
+        if (e->ns && e->ns[0])
         {
             // 拼全名比较（ns + "." + name）
             char full[512];
             _snprintf_s(full, sizeof(full), _TRUNCATE, "%s.%s", e->ns, e->name);
             if (strcmp(full, fullOrShort) == 0) return e;
+            // 嵌套类（如 Ns.Outer.Inner）：e->ns 为 Ns，e->name 为 Inner
+            const size_t nslen = strlen(e->ns);
+            if (!fallback && strncmp(fullOrShort, e->ns, nslen) == 0 && fullOrShort[nslen] == '.')
+                fallback = e;
+        }
+        else if (!fallback)
+        {
+            fallback = e;
         }
     }
-    return nullptr;
+    return fallback;
 }
 
 // ================================================================ 字段
