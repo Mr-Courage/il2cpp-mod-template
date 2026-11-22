@@ -50,6 +50,46 @@ DO_API(MethodInfo*, il2cpp_class_get_method_from_name, (Il2CppClass * klass, con
 // 非泛型 `Load(string)` 前面 ⇒ 按名取只拿到泛型定义。枚举才能挑出 methodPointer 非空的那个。
 DO_API(MethodInfo*, il2cpp_class_get_methods, (Il2CppClass * klass, void **iter));
 
+// class（补充：形状/继承判断，全部可为空 —— 解析不到就由上层降级）
+DO_API(Il2CppClass*, il2cpp_class_get_element_class, (Il2CppClass * klass));
+DO_API(uint32_t, il2cpp_class_get_rank, (Il2CppClass * klass));
+DO_API(bool, il2cpp_class_is_abstract, (Il2CppClass * klass));
+DO_API(bool, il2cpp_class_is_assignable_from, (Il2CppClass * klass, Il2CppClass * oklass));
+DO_API(uint32_t, il2cpp_class_get_flags, (Il2CppClass * klass));
+DO_API(Il2CppClass**, il2cpp_class_get_interfaces, (Il2CppClass * klass, void **iter));
+
+// method（补充：调用器必须知道每个参数的类型和名字）
+DO_API(Il2CppType*, il2cpp_method_get_param, (MethodInfo * method, uint32_t index));
+DO_API(const char*, il2cpp_method_get_param_name, (MethodInfo * method, uint32_t index));
+DO_API(bool, il2cpp_method_is_generic, (const MethodInfo * method));
+
+// object（补充：诊断用体积）
+DO_API(uint32_t, il2cpp_object_get_size, (Il2CppObject * obj));
+
+// gc（补充：活对象枚举要停/启 GC 世界）
+DO_API(void, il2cpp_gc_disable, ());
+DO_API(void, il2cpp_gc_enable, ());
+DO_API(void, il2cpp_gc_collect, (int maxGenerations));
+DO_API(int64_t, il2cpp_gc_get_used_size, ());
+DO_API(void, il2cpp_stop_gc_world, ());
+DO_API(void, il2cpp_start_gc_world, ());
+
+// unity liveness —— 「类 → 活实例」的唯一官方途径，也是整套修改器的分水岭。
+// 两代 API 并存：Unity >= 2021.2 用 allocate_struct/finalize，更早的用 calculation_begin/end。
+// 这里两套都声明（均可为空），运行时按"哪个解析到了用哪个"选择，不靠版本号字符串猜。
+DO_API(void*, il2cpp_unity_liveness_allocate_struct,
+       (Il2CppClass * filter, int max_object_count, il2cpp_register_object_callback callback,
+        void* userdata, il2cpp_liveness_reallocate_callback reallocate));
+DO_API(void, il2cpp_unity_liveness_calculation_from_root, (Il2CppObject * root, void* state));
+DO_API(void, il2cpp_unity_liveness_calculation_from_statics, (void* state));
+DO_API(void, il2cpp_unity_liveness_finalize, (void* state));
+DO_API(void, il2cpp_unity_liveness_free_struct, (void* state));
+DO_API(void*, il2cpp_unity_liveness_calculation_begin,
+       (Il2CppClass * filter, int max_object_count, il2cpp_register_object_callback callback,
+        void* userdata, il2cpp_WorldChangedCallback onWorldStarted,
+        il2cpp_WorldChangedCallback onWorldStopped));
+DO_API(void, il2cpp_unity_liveness_calculation_end, (void* state));
+
 // domain
 DO_API(Il2CppDomain*, il2cpp_domain_get, ());
 DO_API(Il2CppAssembly*, il2cpp_domain_assembly_open, (Il2CppDomain * domain, const char* name));
@@ -113,6 +153,14 @@ DO_API(Il2CppString*, il2cpp_string_new_utf16, (const Il2CppChar * text, int32_t
 DO_API(Il2CppThread*, il2cpp_thread_current, ());
 DO_API(Il2CppThread*, il2cpp_thread_attach, (Il2CppDomain * domain));
 DO_API(void, il2cpp_thread_detach, (Il2CppThread * thread));
+
+// dumper（运行时 dump.cs 生成所需，全部是标准 il2cpp 导出）
+//   field flags   —— static/const/readonly 修饰符
+//   method flags  —— public/static/abstract 修饰符 + iflags（ RVA 注释用不到，丢弃）
+//   declaring type—— 嵌套类判定（dump.cs 里缩进）
+DO_API(uint32_t, il2cpp_field_get_flags, (FieldInfo * field));
+DO_API(uint32_t, il2cpp_method_get_flags, (MethodInfo * method, uint32_t * iflags));
+DO_API(Il2CppClass*, il2cpp_class_get_declaring_type, (Il2CppClass * klass));
 
 // type
 DO_API(int, il2cpp_type_get_type, (Il2CppType * type));

@@ -43,6 +43,13 @@
 #include "probe.h"
 #include "ui/log_panel.h"
 #include "ui/ui_api.h"
+#include "core/config.h"
+#include "core/guard.h"
+#include "core/hotkey.h"
+#include "core/log.h"
+#include "core/reflect.h"
+#include "core/taskbus.h"
+#include "panels/panels.h"
 
 namespace ir = il2cpp::runtime;
 namespace ih = il2cpp::hook;
@@ -90,8 +97,12 @@ static wchar_t          g_modulePathW[MAX_PATH] = { 0 };   // 模块路径（宽
 static char             g_modulePath[MAX_PATH] = { 0 };    // 同上，转 UTF-8 后面板显示用
 
 // ---- 工具 DLL 的每帧心跳指针（类型与定义在下方「工具 DLL」段）----
-using ToolTickFn = void (*)();
-static ToolTickFn g_toolTick = nullptr;
+using ToolTickFn     = void (*)();
+using ToolDrawFn     = void (*)();
+using ToolShutdownFn = void (*)();
+static ToolTickFn     g_toolTick = nullptr;
+static ToolDrawFn     g_toolDraw = nullptr;
+static ToolShutdownFn g_toolShutdown = nullptr;
 
 // ---- 覆盖层的全屏叠加绘制钩子（准星 / 世界坐标标注）----
 // 想用的话在 Mod_OnReady 里调 UiSetOverlayDrawHook(你的函数)。默认不挂。
@@ -388,6 +399,37 @@ static void PanelDrawStatus()
     ImGui::TextDisabled("日志同时写入模块目录下的 %ls", MOD_LOG_FILE);
 }
 
+// 「工具」页的二级 TabBar —— 改一款陌生 IL2CPP 游戏的全部家当。
+// 面板只「画」和「收集请求」，任何 il2cpp 写操作都投任务总线（见 core/taskbus.h）。
+static void DrawToolsTab()
+{
+    if (ImGui::BeginTabBar("##tools", ImGuiTabBarFlags_Reorderable))
+    {
+        if (ImGui::BeginTabItem("类浏览器")) { ArkPanelClassBrowser(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("对象"))     { ArkPanelObjects();      ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("调用"))     { ArkPanelInvoke();       ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("字段监视")) { ArkPanelWatch();        ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("热键"))     { ArkPanelHotkeys();      ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Dumper"))   { ArkPanelDumper();       ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("全部配置"))
+        {
+            ImGui::TextDisabled("ArkCfgRegister() 声明过的配置项 —— 改动自动落盘到 %ls",
+                                MOD_TOOLS_INI);
+            ImGui::Separator();
+            if (ArkCfgDrawAll(nullptr) == 0)
+                ImGui::TextDisabled("还没有任何配置项。用 ArkCfgRegister() 声明一批就有了。");
+            ImGui::EndTabItem();
+        }
+        // 工具 DLL（双 DLL 架构）可选；没加载就不显示这一页，省得看着像坏了。
+        if (g_toolDraw && ImGui::BeginTabItem("工具 DLL"))
+        {
+            g_toolDraw();
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+    }
+}
+
 static void PanelDraw()
 {
     if (ImGui::BeginTabBar("##tabs", ImGuiTabBarFlags_Reorderable))
@@ -404,7 +446,7 @@ static void PanelDraw()
         }
         if (ImGui::BeginTabItem("工具"))
         {
-            ToolDrawInPanel();
+            DrawToolsTab();
             ImGui::EndTabItem();
         }
         // 用户自己的 tab 追加在这里
@@ -430,8 +472,61 @@ static void PanelEnd()
 // 用户一切到别的 tab 或关掉面板，它就停摆了。
 static void ModFrameHook()
 {
+    // 热键必须在「面板关着也跑」的地方轮询，否则关面板热键就失效。
+    ArkHotkeyPoll();
+
     if (g_toolTick) g_toolTick();
     Mod_OnFrame();
+}
+
+// ---------------------------------------------------------------- 主线程泵
+// Unity 的「创建对象 / 场景操作」只能在主线程做：非主线程 Instantiate 会拿到
+// GraphicsDevice.instance == null，皮肤建坏 -> 每帧 NRE -> 几秒后进程被拖死，
+// 而且 VEH 一条都不留（踩过）。所以有第二条队列，只在这里泵。
+typedef void (*TickMethodFn)(void *self);
+static TickMethodFn g_origTick = nullptr;
+static volatile LONG g_mtPumped = 0;
+
+static void DetourTickMethod(void *self)
+{
+    // 这个 detour 只可能跑在主线程上，顺便把 tid 钉死。
+    if (ArkTaskBusMainThread() == 0)
+        ArkTaskBusSetMainThread((unsigned long)GetCurrentThreadId());
+
+    if (ArkMainTaskPending() > 0)
+    {
+        InterlockedIncrement(&g_mtPumped);
+        ArkMainTaskPump();
+    }
+
+    if (g_origTick)
+        g_origTick(self);
+}
+
+static void InstallMainThreadPump()
+{
+    if (g_origTick) return;
+
+    if (!MOD_MAINTHREAD_METHOD[0])
+    {
+        Log("[mt] 未配置主线程泵（MOD_MAINTHREAD_METHOD 为空）"
+            " => 需要碰 GameObject 的任务只能靠 class_from_name 兜底");
+        return;
+    }
+
+    void *orig = ih::HookMethod(MOD_MAINTHREAD_CLASS, MOD_MAINTHREAD_METHOD, 0,
+                                (void *)DetourTickMethod);
+    if (orig)
+    {
+        g_origTick = (TickMethodFn)orig;
+        Log("[mt] 主线程泵已装：%s::%s -> 跳板 %p", MOD_MAINTHREAD_CLASS,
+            MOD_MAINTHREAD_METHOD, orig);
+    }
+    else
+    {
+        Log("[mt] WARN: %s::%s 挂钩失败 => 主线程任务只能靠 class_from_name 兜底",
+            MOD_MAINTHREAD_CLASS, MOD_MAINTHREAD_METHOD);
+    }
 }
 
 // ================================================================ Worker
@@ -455,6 +550,10 @@ static DWORD WINAPI Worker(LPVOID)
     }
     g_exportsResolved = CountResolvedExports();
     Log("il2cpp exports resolved: %d", g_exportsResolved);
+
+    // ---- 崩溃取证 + 任务总线：越早越好（后面每一步都可能崩）----
+    ArkGuardInstall();
+    ArkTaskBusInit();
 
     // ---- 装 ImGui overlay（在等 domain 之前就装，界面能立刻显示引导进度）----
     // 取 device 的方式见 src/ui/imgui_overlay.cpp：建 dummy swapchain 拿全局唯一的
@@ -552,6 +651,18 @@ static DWORD WINAPI Worker(LPVOID)
     if (cfg.dumpClass[0])
         ReflectDumpClass(cfg.dumpClass, nullptr, cfg.dumpMaxFields);
 
+    // ---- 工具层：类索引（类浏览器的搜索底座，只读元数据）----
+    {
+        const int cls = ArkReflectBuildIndex();
+        Log("[tool] 类索引：%d 个类", cls);
+    }
+
+    // ---- 工具层配置（ark_agent.ini -> 变量；渲染线程只置脏，落盘在主循环）----
+    ArkCfgLoad();
+
+    // ---- 主线程泵（必须早于用户 onReady：任何模块都可能往主线程队列投任务）----
+    InstallMainThreadPump();
+
     // ---- 引导完成，交给用户代码 ----
     g_stateReady = 1;
     Mod_OnReady();
@@ -564,11 +675,50 @@ static DWORD WINAPI Worker(LPVOID)
     for (;;)
     {
         if (g_workerStop) { Log("[hot] 主循环收到停止标志，退出"); return 0; }
-        Sleep(1000);
+
+        // Sleep(1000) 会吞掉热重载响应与任务处理；切 10 片，停止标志最多延迟 100ms。
+        for (int i = 0; i < 10; ++i)
+        {
+            if (g_workerStop) { Log("[hot] 主循环收到停止标志，退出"); return 0; }
+            Sleep(100);
+
+            // ★ Worker 这条腿也消费任务总线（另一条在 class_from_name 里）。
+            //   WARN: 这条腿跑在 Worker 上 —— 碰 GameObject 的任务必须走
+            //   ArkTaskPostMain()，那条队列 Worker 泵不到。
+            if (ArkTaskPending() > 0)
+                ArkTaskPump();
+
+            // 主线程 id 兜底采集：窗口所属线程就是 Unity 主线程
+            // （多线程渲染下它和 Present 所在的渲染线程不是同一个）。
+            if (ArkTaskBusMainThread() == 0)
+            {
+                HWND hw = UiGameHwnd();
+                if (hw)
+                {
+                    DWORD tid = 0;
+                    GetWindowThreadProcessId(hw, &tid);
+                    if (tid)
+                    {
+                        ArkTaskBusSetMainThread(tid);
+                        Log("[mt] 主线程 id = %lu（窗口线程）", (unsigned long)tid);
+                    }
+                }
+            }
+        }
+
         Mod_OnTick();
+
+        // 字段监视刷新：1Hz 足够（没人盯着字段看 60fps）。
+        ArkWatchRefresh();
+
+        // 配置落盘：渲染线程只置脏，文件 IO 在这里做。
+        if (ArkCfgTakeDirty())
+            ArkCfgSave();
+
         if (++tick % 10 == 0)
-            Log("heartbeat: %us class_from_name=%ld string_new=%ld target=%ld", tick,
-                (long)g_canaryFromName, (long)g_canaryStringNew, (long)g_targetHits);
+            Log("heartbeat: %us class_from_name=%ld string_new=%ld target=%ld tasks=%ld",
+                tick, (long)g_canaryFromName, (long)g_canaryStringNew, (long)g_targetHits,
+                ArkTaskExecuted());
     }
 }
 
@@ -579,13 +729,9 @@ static DWORD WINAPI Worker(LPVOID)
 // 加载时机：必须在 ImGui::CreateContext() 之后（工具要 SetCurrentContext），
 // 所以放在 Worker 里 UiOverlayInstall 之后。overlay 初始化是异步的
 // （Present 第一次被调用才建 device + context），这里轮询 UiImGuiContext()。
-using ToolInitFn     = void (*)(void *, void *);
-using ToolDrawFn     = void (*)();
-using ToolShutdownFn = void (*)();
+using ToolInitFn = void (*)(void *, void *);
 
-static HMODULE        g_toolMod = nullptr;
-static ToolDrawFn     g_toolDraw = nullptr;
-static ToolShutdownFn g_toolShutdown = nullptr;
+static HMODULE g_toolMod = nullptr;
 
 static bool LoadToolDll()
 {
@@ -719,6 +865,9 @@ void UnloadToolDll()
 // 临界区和文件句柄停在中间状态。
 void ShutdownWorkerThread()
 {
+    // 配置先落盘：Worker 一停就没机会写了（幂等，重复调只多写一次）。
+    ArkCfgSave();
+
     if (!g_workerThread) return;
     InterlockedExchange(&g_workerStop, 1);
     if (WaitForSingleObject(g_workerThread, 3000) == WAIT_TIMEOUT)
@@ -736,6 +885,7 @@ BOOL WINAPI DllMain(HMODULE mod, DWORD reason, LPVOID)
         g_mod = mod;
         DisableThreadLibraryCalls(mod);
         InitializeCriticalSection(&g_logLock);
+        ArkLogInit(mod);          // 工具层目录探测（core/paths.cpp）
         ih::SetLogger(HookLogAdapter);
 
         // 记下模块路径（面板「状态」tab 显示用）。手动映射时这里常常取不到，

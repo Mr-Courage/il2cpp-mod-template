@@ -64,6 +64,31 @@
 // 自测时最多打印多少个镜像名（避免刷屏）。
 #define MOD_SELFTEST_IMAGES  30
 
+// ---------------------------------------------------------------- 7.5 工具层
+// 内置工具箱（类浏览器 / 对象 / 调用 / 字段监视 / 热键 / Dumper）的容量与文件名。
+// 这些名字被 core/ 与 panels/ 直接引用，改之前先搜一遍。
+#define MOD_CLASS_INDEX_MAX   65536     // 类索引上限（超出截断并打日志）
+#define MOD_TASKBUS_CAP       1024      // 渲染线程 -> Worker 队列容量
+#define MOD_MAINQ_CAP         256       // 渲染线程 -> Unity 主线程 队列容量
+#define MOD_WATCH_MAX         256       // 字段监视表条数上限
+
+#define MOD_TOOLS_INI         L"tools.ini"          // 声明式配置（自动落盘）
+#define MOD_CRASH_LOG         L"il2cpp_mod_crash.log"    // 崩溃取证现场
+
+// ---------------------------------------------------------------- 7.6 主线程泵
+// ★ 「创建 Unity 对象 / 操作场景」的任务只能在这条线程上跑。
+//   框架会 detour 下面这个方法当泵；留空则退化为 class_from_name 兜底
+//   （战斗外主线程任务会一直排队）。
+//   Arknights：BattleController.Update 是 private void Update()，每帧都在跑。
+#define MOD_MAINTHREAD_CLASS  ""
+#define MOD_MAINTHREAD_METHOD ""
+
+// ---------------------------------------------------------------- 7.7 调试面板
+// 1 = 编译 ImGui overlay（开发期看现场）
+// 0 = 完全不编 overlay：不 hook Present、不碰 dxgi vtable —— 发布版用这个，
+//     减少反作弊检测面，产物体积也更小。主 UI 交给 PC 应用。
+#define MOD_DEBUG_PANEL       1
+
 // ---------------------------------------------------------------- 8. 字体字形覆盖
 // ★ 必须覆盖「完整 CJK 表意文字」，不能只用 ImGui 的
 //   GetGlyphRangesChineseSimplifiedCommon()。

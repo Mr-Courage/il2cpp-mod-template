@@ -61,9 +61,19 @@ OWN_CPP := src/main.cpp src/probe.cpp src/user_hooks.cpp src/exit_guard.cpp \
            src/ui/imgui_overlay.cpp src/ui/log_panel.cpp \
            src/log_buffer.cpp src/hot_reload.cpp
 
+# ---- 工具层（类浏览器 / 对象 / 调用 / 字段监视 / 热键 / Dumper）----
+# 与具体游戏无关的一整套分析工具。
+# 对象名带 core_ / panel_ 前缀：src/core/invoke.cpp 与 src/panels/invoke.cpp
+# 都叫 invoke.cpp，用 $(notdir) 会撞名（后编的覆盖前一个）。
+CORE_CPP  := $(wildcard src/core/*.cpp)
+PANEL_CPP := $(wildcard src/panels/*.cpp)
+CORE_HDRS := $(wildcard src/core/*.h) $(wildcard src/panels/*.h) src/mod_config.h
+
 IL2CPP_OBJ := $(patsubst %.cpp,$(OD)/%.o,$(notdir $(IL2CPP_CPP))) \
               $(patsubst %.c,$(OD)/%.o,$(notdir $(IL2CPP_C)))
 OWN_OBJ    := $(patsubst %.cpp,$(OD)/%.o,$(notdir $(OWN_CPP)))
+CORE_OBJ   := $(patsubst src/core/%.cpp,$(OD)/core_%.o,$(CORE_CPP))
+PANEL_OBJ  := $(patsubst src/panels/%.cpp,$(OD)/panel_%.o,$(PANEL_CPP))
 
 # ImGui 核心 + **仅 DX11 后端**。
 # 不打 Win32 后端：它用了函数内 static（__cxa_guard_acquire/release），会把 libstdc++
@@ -132,10 +142,18 @@ $(OD)/imgui_tables.o: $(IMGUI)/imgui_tables.cpp | $(OD)
 	$(CXX) $(CXXFLAGS) $(INC) -c $< -o $@
 $(OD)/imgui_impl_dx11.o: $(IMGUI)/backends/imgui_impl_dx11.cpp | $(OD)
 	$(CXX) $(CXXFLAGS) $(INC) -c $< -o $@
+
+# ---- 工具层 ----
+# 依赖挂「全部工具层头文件」：这一层互相引用密，逐个列头文件一定会漏
+#（漏了就是"改了没生效"的幽灵 bug）。
+$(OD)/core_%.o: src/core/%.cpp $(CORE_HDRS) | $(OD)
+	$(CXX) $(CXXFLAGS) $(INC) -c $< -o $@
+$(OD)/panel_%.o: src/panels/%.cpp $(CORE_HDRS) | $(OD)
+	$(CXX) $(CXXFLAGS) $(INC) -c $< -o $@
 # 注意：故意**没有** imgui_impl_win32 规则 —— 见文件头的说明（会引入 emutls 静态 TLS）。
 
-$(TARGET): $(OWN_OBJ) $(IL2CPP_OBJ) $(IMGUI_OBJ) $(EXPORT_DEF) | $(OD)
-	$(CXX) -shared -o $@ $(OWN_OBJ) $(IL2CPP_OBJ) $(IMGUI_OBJ) $(LDFLAGS_STATIC) $(EXPORT_DEF) $(LIBS)
+$(TARGET): $(OWN_OBJ) $(CORE_OBJ) $(PANEL_OBJ) $(IL2CPP_OBJ) $(IMGUI_OBJ) $(EXPORT_DEF) | $(OD)
+	$(CXX) -shared -o $@ $(OWN_OBJ) $(CORE_OBJ) $(PANEL_OBJ) $(IL2CPP_OBJ) $(IMGUI_OBJ) $(LDFLAGS_STATIC) $(EXPORT_DEF) $(LIBS)
 
 clean:
 	@if exist $(OD) rmdir /s /q $(OD)

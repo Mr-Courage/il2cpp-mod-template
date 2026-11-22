@@ -26,8 +26,12 @@ struct Il2CppApi
 //  做法：这里记录成员总数；il2cpp_api.cpp（唯一填充 g_api 的 TU）在编译期
 //  用另一个常量交叉验证。改列表而漏编时，两处数字不一致 -> 编译直接失败。
 // ============================================================================
-#define IL2CPP_API_MEMBER_COUNT_2026_10_10  83   // <-- 增删 DO_API 后同步改这里
+#define IL2CPP_API_MEMBER_COUNT_2026_10_10  109  // <-- 增删 DO_API 后同步改这里
+// 2026-11-01: +3 = 运行时 dumper 所需（field/method flags + declaring type）
 // 2026-10-12: +1 = il2cpp_class_get_methods（枚举类方法，用于挑出非泛型重载）
+// 2026-11-01: +23 = 对象查找器 / 方法调用器所需（详见 api_functions.h 的分组注释）：
+//   6 个 class 形状判断、3 个 method 参数信息、1 个 object 体积、
+//   6 个 GC 世界控制、7 个 unity liveness。全部可为空，上层逐个判空降级。
 // sizeof(Il2CppApi) = 成员数 * sizeof(函数指针)，x64 上函数指针恒为 8 字节。
 // 放在结构体定义**之后**，任何 TU 只要编进来就会带上这个常量。
 // 真正的防线在 build.ps1：它比对各 .o 的时间戳与本头文件的时间戳 ——

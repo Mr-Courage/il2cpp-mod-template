@@ -57,6 +57,24 @@ $units = [ordered]@{
     "log_panel"             = @{ src = "src/ui/log_panel.cpp";                        cc = $CXX; fl = $CXXFLAGS }
     "log_buffer"            = @{ src = "src/log_buffer.cpp";                          cc = $CXX; fl = $CXXFLAGS }
     "hot_reload"            = @{ src = "src/hot_reload.cpp";                          cc = $CXX; fl = $CXXFLAGS }
+    # ---- 工具层：core（跨游戏通用的分析工具）----
+    "core_paths"            = @{ src = "src/core/paths.cpp";                           cc = $CXX; fl = $CXXFLAGS }
+    "core_taskbus"          = @{ src = "src/core/taskbus.cpp";                         cc = $CXX; fl = $CXXFLAGS }
+    "core_guard"            = @{ src = "src/core/guard.cpp";                           cc = $CXX; fl = $CXXFLAGS }
+    "core_reflect"          = @{ src = "src/core/reflect.cpp";                         cc = $CXX; fl = $CXXFLAGS }
+    "core_inspect"          = @{ src = "src/core/inspect.cpp";                         cc = $CXX; fl = $CXXFLAGS }
+    "core_invoke"           = @{ src = "src/core/invoke.cpp";                          cc = $CXX; fl = $CXXFLAGS }
+    "core_gcobj"            = @{ src = "src/core/gcobj.cpp";                           cc = $CXX; fl = $CXXFLAGS }
+    "core_config"           = @{ src = "src/core/config.cpp";                          cc = $CXX; fl = $CXXFLAGS }
+    "core_hotkey"           = @{ src = "src/core/hotkey.cpp";                          cc = $CXX; fl = $CXXFLAGS }
+    "core_dumper"           = @{ src = "src/core/dumper.cpp";                          cc = $CXX; fl = $CXXFLAGS }
+    # ---- 工具层：panels（调试面板）----
+    "panel_classbrowser"    = @{ src = "src/panels/classbrowser.cpp";                  cc = $CXX; fl = $CXXFLAGS }
+    "panel_objects"         = @{ src = "src/panels/objects.cpp";                       cc = $CXX; fl = $CXXFLAGS }
+    "panel_invoke"          = @{ src = "src/panels/invoke.cpp";                        cc = $CXX; fl = $CXXFLAGS }
+    "panel_watch"           = @{ src = "src/panels/watch.cpp";                         cc = $CXX; fl = $CXXFLAGS }
+    "panel_hotkeys"         = @{ src = "src/panels/hotkeys.cpp";                       cc = $CXX; fl = $CXXFLAGS }
+    "panel_dumper"          = @{ src = "src/panels/dumper.cpp";                        cc = $CXX; fl = $CXXFLAGS }
     "imgui"                 = @{ src = "$IMGUI/imgui.cpp";                            cc = $CXX; fl = $CXXFLAGS }
     "imgui_draw"            = @{ src = "$IMGUI/imgui_draw.cpp";                       cc = $CXX; fl = $CXXFLAGS }
     "imgui_widgets"         = @{ src = "$IMGUI/imgui_widgets.cpp";                    cc = $CXX; fl = $CXXFLAGS }
