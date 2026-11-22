@@ -55,6 +55,10 @@ bool UiPanelVisible();
 void UiTogglePanel();
 bool UiCursorOverPanel();      // 光标是否悬停在面板上
 bool UiPointOverPanel(int screenX, int screenY);
+bool UiWantCaptureMouse();     // 面板/弹窗/拖拽是否应拦截鼠标点击与滚轮
+bool UiWantTextInput();        // 是否有 ImGui 输入框获取文本焦点
+void UiPushInputChar(unsigned short utf16Char); // 由窗口过程推送 UTF-16 字符（支持中文 IME）
+void UiSetWndProcAttached(bool attached);       // 通知 overlay：ExitWndProc 已接管 WM_CHAR
 
 // 把面板矩形上报给 overlay —— 光标可见性判断与「吃掉点击」都依赖它。
 // 必须在窗口 End() 之前调用。
