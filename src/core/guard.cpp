@@ -183,8 +183,9 @@ static LONG CALLBACK VectoredHandler(EXCEPTION_POINTERS *ep)
             Log("[guard] 已忽略已知噪声：ArknightsBase+0x1D6512E 写 NULL（游戏自处理的每帧异常）");
         return EXCEPTION_CONTINUE_SEARCH;   // 直接放行，不写 crash log、不占名额
     }
-    // 只关心"致命"的那几类。C++ 异常（0xE06D7363）托管侧会自己处理，
-    // 但落到这里说明已经在 native 边界上炸了 —— 值得记一笔。
+    // 只记录致命硬件异常。不要在 first-chance VEH 里拦截 0xE06D7363：
+    // IL2CPP 托管侧正常的 try/catch 就会触发它，抢占 g_crashLogged 单次名额后会导致后续真正的 AV 漏记；
+    // 真正未捕获的 C++ 异常仍会落到 UEF（UnhandledFilter）记录。
     switch (r->ExceptionCode)
     {
     case EXCEPTION_ACCESS_VIOLATION:
@@ -192,7 +193,6 @@ static LONG CALLBACK VectoredHandler(EXCEPTION_POINTERS *ep)
     case EXCEPTION_STACK_OVERFLOW:
     case EXCEPTION_INT_DIVIDE_BY_ZERO:
     case EXCEPTION_PRIV_INSTRUCTION:
-    case 0xE06D7363:
         WriteCrashDump("VEH",
                        r->ExceptionCode,
                        r->ExceptionAddress,

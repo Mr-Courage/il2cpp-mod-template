@@ -92,7 +92,7 @@ static IDXGISwapChain *g_uiSc = nullptr;     // 当前绑定（游戏自己的�
 static void *g_patchedPresentAddr = nullptr;
 static void **g_presentVtable = nullptr;   // 被改的那张 vtable（存活校验用它）
 static void **g_resizeVtable = nullptr;    // ResizeBuffers 被改的那张 vtable（卸载时还原）
-static bool  g_shutdownDone = false;      // 卸载幂等标记
+static volatile LONG g_shutdownDone = 0;  // 卸载幂等标记（与 InterlockedExchange 对齐为 4 字节）
 
 // ---- 跨线程卸载请求 --------------------------------------------------------
 //
@@ -1421,7 +1421,7 @@ static void PumpUnloadIfRequested()
         RestoreVtables();
         // vtable 已还原 ⇒ 渲染线程本帧收尾（1047 快速路径）用的是栈上的 origPresent
         // 读值，且此后无人再进本函数 → 置完成标志安全
-        InterlockedExchange((volatile LONG *)&g_shutdownDone, 1);
+        InterlockedExchange(&g_shutdownDone, 1);
         g_unloadDoneTick = GetTickCount64();
         LogUi("[ui] ===== 渲染线程侧卸载完成（资源释放交给注入器线程）=====");
         return;
@@ -1469,7 +1469,7 @@ void UiShutdown()
         //   2026-10-14 复盘：这是"点 X 退出卡死"的一个独立成因。
         LogUi("[ui] WARN: 3s 内渲染线程未完成卸载 —— 由本线程补还原 vtable");
         RestoreVtables();
-        InterlockedExchange((volatile LONG *)&g_shutdownDone, 1);
+        InterlockedExchange(&g_shutdownDone, 1);
         g_unloadDoneTick = GetTickCount64();
     }
     else

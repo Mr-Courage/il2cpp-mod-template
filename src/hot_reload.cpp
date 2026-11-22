@@ -68,7 +68,7 @@ namespace
 // 握手句柄。名字**带 PID** —— 这是关键，见文件头注释。
 HANDLE         g_lock = NULL;
 HMODULE        g_selfMod = NULL;
-ULONG_PTR      g_selfBase = NULL;
+ULONG_PTR      g_selfBase = 0;
 volatile LONG  g_unloaded = 0;
 const int      g_version = 0x10001;
 wchar_t        g_lockName[64] = L"";
