@@ -13,7 +13,7 @@
 | 约束 | 值 | 校验方式 |
 | --- | --- | --- |
 | 架构 | x86-64 only | — |
-| 静态 TLS | **无**（无 `.tls` 段、无 `__emutls_*`） | `objdump -p x.dll \| grep -c emutls` → 0 |
+| 静态 TLS | **无**（无 `.tls` 段、无 `__emutls_*`） | `objdump -h x.dll \| grep -c '\.tls'` → 0；`nm build/*.o \| grep -c emutls` → 0 |
 | 导入表 | 仅 `KERNEL32.dll` / `msvcrt.dll` / `SHELL32.dll` / `USER32.dll` | `objdump -p x.dll \| grep -i "DLL Name"` |
 | 异常 / RTTI | 未启用（`-fno-exceptions -fno-rtti`） | — |
 | 入口点 | `DllMainCRTStartup`（已导出，也可直接跳 PE 头里的 AddressOfEntryPoint） | — |

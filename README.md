@@ -68,20 +68,21 @@ il2cpp-mod-template/
 
 ### 1. 编译
 
-依赖 **mingw-w64**（默认 `D:/mingw64`，可用环境变量 `MINGW` 覆盖）。
+依赖 **mingw-w64**（优先读环境变量 `MINGW`，其次自动从 `PATH` 或常见路径探测）。
 
 ```powershell
 .\build.ps1            # 增量构建
 .\build.ps1 -Clean     # 清掉 build/ 全量重编
 ```
 
-产物 `il2cpp_mod.dll`（约 2.2 MB）。有 `make` 也可以用 `make` / `make clean`。
+产物 `il2cpp_mod.dll`（约 865 KB）。有 `make` 也可以用 `make` / `make clean`。
 
 发布前建议跑一遍合规校验：
 
 ```bash
 objdump -p il2cpp_mod.dll | grep -i "DLL Name"   # 只应有 KERNEL32/msvcrt/SHELL32/USER32
-objdump -p il2cpp_mod.dll | grep -c emutls       # 必须是 0
+objdump -h il2cpp_mod.dll | grep -c '\.tls'      # 必须是 0
+nm build/*.o | grep -c emutls                    # 必须是 0（开启 -s 后查 .o 符号）
 ```
 
 ### 2. 接入你的游戏
