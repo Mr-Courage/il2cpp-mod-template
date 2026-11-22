@@ -29,7 +29,8 @@
 #   没有 make 就：powershell -File build.ps1   （推荐，它还做了 ABI 陈旧检查）
 #
 # 校验产物是否合规（可选，release 前跑一遍）：
-#   objdump -p il2cpp_mod.dll | grep -c emutls     # 必须是 0
+#   objdump -h il2cpp_mod.dll | grep -c '\.tls'    # 必须是 0
+#   nm build/*.o | grep -c emutls                  # 必须是 0（开启 -s 后查 .o）
 #   objdump -p il2cpp_mod.dll | grep -i "DLL Name" # 只应有系统 DLL
 
 MINGW ?= D:/mingw64
@@ -42,10 +43,12 @@ INC         := -I$(IL2CPP_ROOT)/src -I$(IMGUI) -Isrc
 
 # IL2CPP_CORE_NO_STL：剔除 il2cpp_runtime 里基于 std::string/vector 的函数，
 # 避免连带拉入 libstdc++ EH/emutls/pthread。
+# 不加 -fdata-sections：MinGW PE/COFF 下它会把全零静态缓冲放到 .data$*（占磁盘字节）
+# 而不是 .bss，会让 DLL 凭空多出 ~4.5 MB 的零字节。
 CXXFLAGS := -O2 -std=c++17 -Wall -Wno-unused-function -fno-exceptions -fno-rtti \
-            -ffunction-sections -fdata-sections \
+            -ffunction-sections \
             -DIL2CPP_CORE_NO_STL -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601 -DUNICODE -D_UNICODE
-CFLAGS   := -O2 -std=c11 -Wall -ffunction-sections -fdata-sections \
+CFLAGS   := -O2 -std=c11 -Wall -ffunction-sections \
             -DWIN32_LEAN_AND_MEAN -D_WIN32_WINNT=0x0601
 
 OD := build
@@ -84,7 +87,7 @@ IMGUI_OBJ := $(OD)/imgui.o $(OD)/imgui_draw.o $(OD)/imgui_widgets.o $(OD)/imgui_
 
 LIBS := -ld3d11 -ldxgi -lgdi32 -luser32
 
-LDFLAGS_STATIC := -static -Wl,--gc-sections -Wl,--exclude-all-symbols -Wl,--subsystem,windows
+LDFLAGS_STATIC := -static -s -Wl,--gc-sections -Wl,--exclude-all-symbols -Wl,--subsystem,windows
 
 # mod_template.def：精确导出 Mod*/Esp*（热重载接口）与 DllMainCRTStartup。
 # 必须有它 —— --exclude-all-symbols 会把 extern "C" 的可见性也一并去掉，

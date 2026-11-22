@@ -46,7 +46,8 @@ $env:MINGW = "D:/mingw64"     # 不是这个路径就改，或设到系统环境
 
 ```bash
 objdump -p il2cpp_mod.dll | grep -i "DLL Name"   # 只应有 KERNEL32 / msvcrt / SHELL32 / USER32
-objdump -p il2cpp_mod.dll | grep -c emutls       # 必须是 0
+objdump -h il2cpp_mod.dll | grep -c '\.tls'      # 必须是 0
+nm build/*.o | grep -c emutls                    # 必须是 0（开启 -s 后查 .o 符号）
 ```
 
 ---

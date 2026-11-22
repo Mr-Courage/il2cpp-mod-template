@@ -138,8 +138,15 @@ IL2CPP 的导出函数指针可能没解析到，调用结果也可能是 null�
 危险信号：
 
 ```bash
-objdump -p il2cpp_mod.dll | grep -c emutls    # 必须是 0
+objdump -h il2cpp_mod.dll | grep -c '\.tls'      # 必须是 0
+nm build/*.o | grep -c emutls                    # 必须是 0（开启 -s 后查 .o）
 ```
+
+### MinGW 下 `-fdata-sections` 会把全零静态大数组写进磁盘 `.data`
+
+在 MinGW（PE/COFF）上，`-fdata-sections` 会给每个零初始化静态缓冲生成带 `CONTENTS` 标志的 `.data$*` 节，把本该占 0 字节磁盘空间的 `.bss`（如 `g_nodeBuf`、`g_logSlots`、`g_panel`）直接写成物理零字节塞进 DLL，导致产物凭空膨胀 ~4.5 MB。
+
+保留 `-ffunction-sections -Wl,--gc-sections`，不要加 `-fdata-sections`；链接期加 `-s` 剥离内部符号不影响 `.edata` 导出表与 `.pdata/.xdata`。
 
 ### 导入表只应有系统 DLL
 

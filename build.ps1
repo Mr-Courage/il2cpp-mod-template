@@ -3,13 +3,26 @@
 #   .\build.ps1            增量构建（对象已存在且依赖没变则跳过）
 #   .\build.ps1 -Clean     先清 build/ 再全量构建
 #
-# 依赖：mingw-w64。默认 D:/mingw64，可用环境变量 MINGW 覆盖。
+# 依赖：mingw-w64。优先读环境变量 MINGW，其次从 PATH 或常见安装目录探测。
 param([switch]$Clean)
 
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$MINGW  = if ($env:MINGW) { $env:MINGW } else { "D:/mingw64" }
+$MINGW = $null
+if ($env:MINGW -and (Test-Path "$($env:MINGW)/bin/x86_64-w64-mingw32-g++.exe")) {
+    $MINGW = $env:MINGW
+} else {
+    $cmdGxx = Get-Command "x86_64-w64-mingw32-g++.exe" -ErrorAction SilentlyContinue
+    if ($cmdGxx) {
+        $MINGW = Split-Path (Split-Path $cmdGxx.Source -Parent) -Parent
+    } else {
+        foreach ($cand in @("D:/mingw64", "C:/msys64/mingw64", "C:/mingw64")) {
+            if (Test-Path "$cand/bin/x86_64-w64-mingw32-g++.exe") { $MINGW = $cand; break }
+        }
+    }
+}
+if (-not $MINGW) { $MINGW = "D:/mingw64" }
 $CXX    = "$MINGW/bin/x86_64-w64-mingw32-g++.exe"
 $CC     = "$MINGW/bin/x86_64-w64-mingw32-gcc.exe"
 $IL2CPP = "il2cpp_core"
@@ -27,13 +40,14 @@ if ($Clean) {
 if (-not (Test-Path $OD)) { New-Item -ItemType Directory -Path $OD | Out-Null }
 
 # IL2CPP_CORE_NO_STL / -fno-exceptions / -static 都是硬约束，见 Makefile 头注释
+# 不加 -fdata-sections：MinGW PE/COFF 下它会把全零静态缓冲放进 .data$*，占掉 ~4.5 MB 磁盘空间
 $CXXFLAGS = @(
     "-O2","-std=c++17","-Wall","-Wno-unused-function",
-    "-fno-exceptions","-fno-rtti","-ffunction-sections","-fdata-sections",
+    "-fno-exceptions","-fno-rtti","-ffunction-sections",
     "-DIL2CPP_CORE_NO_STL","-DWIN32_LEAN_AND_MEAN","-D_WIN32_WINNT=0x0601",
     "-DUNICODE","-D_UNICODE"
 )
-$CFLAGS   = @("-O2","-std=c11","-Wall","-ffunction-sections","-fdata-sections",
+$CFLAGS   = @("-O2","-std=c11","-Wall","-ffunction-sections",
                "-DWIN32_LEAN_AND_MEAN","-D_WIN32_WINNT=0x0601")
 $INC      = @("-I$IL2CPP/src", "-I$IMGUI", "-Isrc")
 # 不链 d3dcompiler / dwmapi：
@@ -158,7 +172,7 @@ foreach ($name in $units.Keys) {
 if ($failed) { exit 1 }
 
 Write-Host "  LINK  $TARGET" -ForegroundColor Magenta
-& $CXX -shared -o $TARGET @objs -static '-Wl,--gc-sections' '-Wl,--exclude-all-symbols' '-Wl,--subsystem,windows' mod_template.def @LIBS
+& $CXX -shared -o $TARGET @objs -static -s '-Wl,--gc-sections' '-Wl,--exclude-all-symbols' '-Wl,--subsystem,windows' mod_template.def @LIBS
 if ($LASTEXITCODE -ne 0) { Write-Host "[x] 链接失败" -ForegroundColor Red; exit 1 }
 
 $sz = (Get-Item $TARGET).Length
